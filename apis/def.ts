@@ -2,7 +2,9 @@
 
 import axios from "axios";
 import config from "../config.js";
+import { GetMemberAnswersParams, GetMemberAnswersResponse } from "./getMemberAnswers.js";
 import { GetQuestionParams, GetQuestionResponse } from "./getQuestion.js";
+import { pick } from "./helper/pick.js";
 import { PostAnswerParams, PostAnswerResponse } from "./postAnswer.js";
 import { RecommandListParams, RecommandListResponse } from './recommandList.js'
 
@@ -10,7 +12,7 @@ import { RecommandListParams, RecommandListResponse } from './recommandList.js'
 axios.interceptors.request.use((reqConfig) => {
   // console.log('Request:', reqConfig)
   // @ts-ignore
-  reqConfig.headers['cookie'] = config.cookie
+  if (!reqConfig.url?.includes('https://www.zhihu.com/api/v4/members/')) reqConfig.headers['cookie'] = config.cookie
   // @ts-ignore
   reqConfig.headers["Accept-Encoding"] = "gzip,deflate,compress"
   return reqConfig
@@ -29,6 +31,10 @@ export interface API {
     params: GetQuestionParams;
     response: GetQuestionResponse;
   },
+  'getMemberAnswers': {
+    params: GetMemberAnswersParams;
+    response: GetMemberAnswersResponse;
+  }
 
 }
 
@@ -37,6 +43,7 @@ export const interfacesConfig: {
     url: (options: any) => string;
     data: (options: API[APIName]['params']) => any;
     method: string;
+    headers?: any;
   }
 } = {
   'recommandList': {
@@ -58,6 +65,14 @@ export const interfacesConfig: {
     url: ({ questionId }: { questionId: string }) => `https://www.zhihu.com/question/${questionId}`,
     method: 'get',
     data: (_) => undefined,
+  },
+  'getMemberAnswers': {
+    url: ({ memberName }: { memberName: string }) => `https://www.zhihu.com/api/v4/members/${memberName}/answers%5C?include=data[*].question.is_following`,
+    method: 'get',
+    data: (data) => ({
+      offset: 0, limit: 20, ...pick(data, ['offset', 'limit', 'sort_by']),
+    }),
+    headers: {},
   }
 }
 
@@ -65,6 +80,7 @@ export const call = async <APIName extends keyof API>(api: APIName, data: API[AP
   return axios.request<API[APIName]['response']>({
     ...interfacesConfig[api],
     url: interfacesConfig[api].url(data),
-    data: interfacesConfig[api].data(data),
+    data: interfacesConfig[api].method === 'post' ? interfacesConfig[api].data(data) : undefined,
+    params: interfacesConfig[api].method === 'get' ? interfacesConfig[api].data(data) : undefined,
   });
 };
