@@ -38,7 +38,7 @@ export const fetchRecommandList = async ({ limit }: { limit: number } = { limit:
     // filter question undefined
     ?.filter(item => item.target.question !== undefined).map(item => item.target.question)
     // filter question answered
-    .filter(question => question.is_following === false)
+    .filter(question => question.is_following === false || question.is_following === undefined)
     // filter question with too few answers 
     .filter(question => question.answer_count > 1000)
     ?? [];
