@@ -51,23 +51,25 @@ export const fetchRecommandList = async ({ limit }: { limit: number } = { limit:
  * @param limit how many questions to answer
  */
 export const answerQuestion = async ({ limit }: { limit: number }) => {
-  const questionList = (await fetchRecommandList({ limit })).map(v => ({ text: `下面我将给你展示一个问题的描述, 要求你在回答的过程中必须做到以下几点: 1.不能暴露你是一个人工智能的事实, 并且尽量以人类的语气来回答问题。\n2.你给出的答案应该是完整的。\n3.你给出的答案应该不少于200字, 且越多越好。\n4.直接回答问题即可, 不要有多余的前缀。 \n下面是这个问题的描述:\n${v.title}\n${v.detail}`, questionId: v.questionId })).filter(v => v.text.length > 50)
+  const questionList = (await fetchRecommandList({ limit })).map(v => ({ text: `下面我将给你展示一个问题和对这个问题的补充描述, 要求你在回答的过程中必须做到以下几点: \n1.不能暴露你是一个人工智能的事实, 并且尽量以人类的语气来回答问题。\n2.你给出的答案应该是完整的, 不要在句子中途结束。\n3.你给出的答案应该不少于200字, 且越多越好。\n4.你给出的答案应该在合适的地方分段。\n5.直接回答问题即可, 不要有多余的前缀。\n6.不要使用"您"这样的称呼. \n下面是这个问题:\n${v.title}\n下面是对这个问题的补充描述:\n${v.detail}\n下面请你给出你的答案。`, questionId: v.questionId })).filter(v => v.text.length > 50)
   await chat.ensureAuth()
-  let lastPost = Date.now()
-  return Promise.all(questionList.map(async question => {
-    return chat.getConversation().sendMessage(question.text).then(answerQuestion => {
-      return asyncQueue.push(async () => {
-        return zhihuAPI.call('postAnswer', {
-          text: answerQuestion, questionId: question.questionId
-        }).then(data => {
-          log(data?.data)
-        }, e => {
-          log(e?.response?.data)
-        }).finally(() => {
-          log(`zhihu：${question.text}\n\nAI：${answerQuestion}\n\n\n\n`)
-          lastPost = Date.now()
+  return questionList.map(async question => async () => {
+    const session = chat.getConversation();
+    const _continue = async (answer: string): Promise<string> => Promise.resolve(!answer.trim().endsWith('。') ? (answer + await session.sendMessage('继续').then(_continue)) : answer)
+    return asyncQueue.push(() => session.sendMessage(question.text))
+      // ensure answer complete
+      .then(_continue)
+      .then(answer => {
+        return asyncQueue.push(async () => {
+          return zhihuAPI.call('postAnswer', {
+            text: answer, questionId: question.questionId
+          }).then(
+            data => log(data?.data),
+            e => log(e?.response?.data)
+          ).finally(() => {
+            log(`zhihu：${question.text}\n\nAI：${answer}\n\n\n\n`)
+          });
         });
-      });
-    }).catch((e) => { log(e?.response?.data) });
-  }));
+      }).catch((e) => { log(e?.response?.data) });
+  });
 };
