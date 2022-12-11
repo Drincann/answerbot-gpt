@@ -59,7 +59,9 @@ export const answerQuestion = async ({ limit }: { limit: number }) => {
       return asyncQueue.push(async () => {
         return zhihuAPI.call('postAnswer', {
           text: answerQuestion, questionId: question.questionId
-        }).catch((e) => {
+        }).then(data => {
+          log(data?.data)
+        }, e => {
           log(e?.response?.data)
         }).finally(() => {
           log(`zhihu：${question.text}\n\nAI：${answerQuestion}\n\n\n\n`)
