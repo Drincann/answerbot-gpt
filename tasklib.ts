@@ -33,8 +33,19 @@ export const fetchRecommandList = async ({ limit }: { limit: number } = { limit:
   const cleanToTitleDetailObject = async (questionList: Question[]) =>
     Promise.all(questionList.map(async question => ({ title: question.title, detail: await getQuestionDetail(question.url.split('/').pop()), questionId: question.url.split('/').pop() as string })))
 
-  const data = (await zhihuAPI.call('recommandList', {}))?.data?.data.filter(item => item.target.question !== undefined) ?? [];
-  const result = (await cleanToTitleDetailObject(data.map(item => item.target.question))).filter(v => v.detail.length > 50);
+  const questionList = (await zhihuAPI.call('recommandList', {}))
+    ?.data?.data
+    // filter question undefined
+    ?.filter(item => item.target.question !== undefined).map(item => item.target.question)
+    // filter question answered
+    .filter(question => question.is_following === false)
+    // filter question with too few answers 
+    .filter(question => question.answer_count > 1000)
+    ?? [];
+
+  const result = (await cleanToTitleDetailObject(questionList))
+    // filter question with too short title and detail
+    .filter(v => (v.title + v.detail).length > 50);
   if (result.length < limit) {
     return [
       ...result,
