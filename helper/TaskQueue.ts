@@ -1,6 +1,7 @@
 interface TaskQueueEventArgsMap {
   beforeSchedule: [() => Promise<any>];
   afterSchedule: [Promise<any>];
+  done: [];
 }
 
 export class TaskQueue {
@@ -24,6 +25,7 @@ export class TaskQueue {
   } = {
       beforeSchedule: [],
       afterSchedule: [],
+      done: [],
     };
 
   public constructor(config: {
@@ -43,11 +45,6 @@ export class TaskQueue {
       this.schedule();
       return this.queue.length;
     };
-    this.queue.shift = () => {
-      const task = Array.prototype.shift.call(this.queue);
-      this.schedule();
-      return task;
-    }
   }
 
   public on<Event extends keyof TaskQueueEventArgsMap>(
@@ -70,11 +67,12 @@ export class TaskQueue {
   }
 
   private async schedule(): Promise<void> {
-    await this.globalIntervalTimer();
-    this.emit('beforeSchedule', this.queue[0]);
+    if (this.running === 0 && this.queue.length === 0) this.emit('done')
     if (this.queue.length > 0 && this.running < this.concurrency) {
       this.running++;
-      const task = this.queue.shift();
+      const task = this.queue.shift()!; // 这里又 schedule 了一次, 思考如何优化
+      await this.globalIntervalTimer();
+      this.emit('beforeSchedule', task);
       const promise = task?.();
       if (typeof promise?.then === 'function') {
         promise.then(() => {
@@ -105,11 +103,9 @@ export class TaskQueue {
   public async wait(): Promise<void> {
     return new Promise(resolve => {
       const self = this;
-      this.on('beforeSchedule', function resolveWhenDone() {
-        if (self.queue.length === 0 && self.running === 0) {
-          resolve();
-          self.off('beforeSchedule', resolveWhenDone)
-        }
+      this.on('done', function resolveWhenDone() {
+        self.off('done', resolveWhenDone)
+        resolve();
       })
     });
   }
